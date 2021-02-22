@@ -28,7 +28,7 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 
 % Join channel
 handle(St, {join, Channel}) ->
-    % TODO: Implement this function
+    
 
     % Send request to genserver from state St, store answer in variable 
     % The data that will reach the handler in server is the data inside the curly brackets
@@ -51,13 +51,16 @@ handle(St, {leave, Channel}) ->
 
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
-    % TODO: Implement this function
     % Attempt sending message to channel, store answer
     % Catch errors
     % Answer
-
-    % {reply, ok, St} ;
-    {reply, {error, not_implemented, "message sending not implemented"}, St} ;
+    ChannelPid = list_to_atom(Channel),
+    case genserver:request(ChannelPid, {message_send, Msg, {self(), St#client_st.nick}}) of
+        user_not_joined ->
+            {reply, user_not_joined, St};
+        _ ->
+            {reply, ok, St}
+    end;
 
 % This case is only relevant for the distinction assignment!
 % Change nick (no check, local only)

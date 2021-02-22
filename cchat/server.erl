@@ -9,7 +9,8 @@
 }).
 
 -record(channel_st, {
-    users % Only nicks
+    name,
+    users % Pids, then Nicks
 }).
 
 % Function returning the initial state of the server, no channels nor servers
@@ -19,8 +20,9 @@ initial_state() ->
         users = []
     }.
 
-initial_channel_state() ->
+initial_channel_state(Name) ->
     #channel_st{
+        name = Name,
         users = []
     }.
 
@@ -68,12 +70,12 @@ serverHandler(St, {join, Channel, Pid, Nick}) ->
             % check if user is already in channel
         true ->
             % if not, create channel
-            genserver:start(ChannelPid, initial_channel_state(), fun channelHandler/2),
+            genserver:start(ChannelPid, initial_channel_state(Channel), fun channelHandler/2),
             Channels = [ChannelPid|St#server_st.channels]
     end,
 
    % {_,Added,St} = genserver:request(ChannelPid, {addUser, Nick}),
-    case genserver:request(ChannelPid, {addUser, Nick}) of
+    case genserver:request(ChannelPid, {addUser, {Pid, Nick}}) of
         nick_already_joined ->
             {reply, user_already_joined, St};
         _ ->
@@ -90,17 +92,40 @@ serverHandler(St, {leave, Channel, Nick, Pid}) ->
 
 
 
-channelHandler(St, {addUser, Nick}) ->
-    case inList(St#channel_st.users, Nick) of 
+channelHandler(St, {addUser, User}) ->
+    case inList(St#channel_st.users, User) of 
         true ->
             {reply, nick_already_joined, St};
         _ ->
-            Users = [Nick | St#channel_st.users],
+            Users = [User | St#channel_st.users],
             State = St#channel_st{
-                users = users
+                users = Users
             },
             {reply, ok, State}
+    end;
+
+% TODO: too much throwing around Channel
+channelHandler(St, {message_send, Msg, {Pid, Nick}}) ->
+    case inList(St#channel_st.users, {Pid, Nick}) of 
+        true ->
+            massMail(St#channel_st.users, Msg, Nick, St#channel_st.name),
+            {reply, ok, St};
+        _ ->
+            {reply, user_not_joined, St}
     end.
+
+
+
+massMail([{Target, TNick}|Lst], Msg, Nick, Channel) ->
+    if 
+        TNick == Nick ->
+            massMail(Lst, Msg, Nick, Channel);
+        true ->
+            genserver:request(Target, {message_receive, Channel, Nick, Msg}),
+            massMail(Lst, Msg, Nick, Channel)
+    end;
+massMail(_,_,_,_) -> 
+    ok.
 
 
 pidNick([{Pid, Nick}|_], Pid, Nick) -> true; % A match!
