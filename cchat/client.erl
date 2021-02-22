@@ -29,8 +29,19 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 % Join channel
 handle(St, {join, Channel}) ->
     % TODO: Implement this function
-    % {reply, ok, St} ;
-    {reply, {error, not_implemented, "join not implemented"}, St} ;
+
+    % Send request to genserver from state St, store answer in variable 
+    % The data that will reach the handler in server is the data inside the curly brackets
+    
+    % "Analyze" answer for error catching
+    case genserver:request(St#client_st.server, {join, Channel, self(), St#client_st.nick}) of
+        % Return, in message form, an Ok if performed, otherwise error with error message
+        user_already_joined ->
+            {reply, {error, not_implemented, "join not implemented"}, St};        
+        _ ->
+            %TODO: update state?
+            {reply, ok, St} 
+    end;
 
 % Leave channel
 handle(St, {leave, Channel}) ->
@@ -41,6 +52,10 @@ handle(St, {leave, Channel}) ->
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
     % TODO: Implement this function
+    % Attempt sending message to channel, store answer
+    % Catch errors
+    % Answer
+
     % {reply, ok, St} ;
     {reply, {error, not_implemented, "message sending not implemented"}, St} ;
 
