@@ -48,7 +48,8 @@ handle(St, {join, Channel}) ->
 
     catch 
         error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St};
-        timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St}
+        timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St};
+        _:_ -> {reply, {error, server_not_reached, "Server timedout"}, St}
     end;
 
 % Leave channel
