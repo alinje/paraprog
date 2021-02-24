@@ -94,30 +94,16 @@ handle(St, {leave, Channel}) ->
 handle(St, {message_send, Channel, Msg}) ->
     ChannelAtom = list_to_atom(Channel),
     %TODO: dont go through server
-
-    try genserver:request(St#client_st.server, {channelExists, ChannelAtom}) of
-        true ->
-            MemberofChan = genserver:request(ChannelAtom, {message_send, Msg, self(), St#client_st.nick}),
-
-            if 
-                MemberofChan =:= ok ->
-                    {reply, ok, St};
-                true ->
-                    {reply, {error, user_not_joined, "User has not joined this channel"}, St}
-               
-            % what is the result of the send request? if it's ok, send ok to gui. otherwise send error msg user_not_joined
-
-            end;
-        false ->
-            {reply, {error, server_not_reached, "Unknown channel"}, St}
-    
-    catch 
+    try genserver:request(ChannelAtom, {message_send, Msg, self(), St#client_st.nick}) of
+        user_not_joined ->
+            {reply, {error, user_not_joined, "User has not joined this channel"}, St};
+        ok ->
+            {reply, ok, St}
+    catch
         error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St};
         timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St}
     end;
 
-    %MemberofChan = genserver:request(ChannelAtom, {message_send, Msg, self(), St#client_st.nick}),
-    %ChanExists = is_process_alive(whereis(St#client_st.server)),
    
 % This case is only relevant for the distinction assignment!
 % Change nick (no check, local only)
