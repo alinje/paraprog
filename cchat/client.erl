@@ -88,7 +88,7 @@ handle(St, {message_send, Channel, Msg}) ->
 % This case is only relevant for the distinction assignment!
 % Change nick (no check, local only)
 handle(St, {nick, NewNick}) ->
-    %TODO: check for permission with server !!
+    %TODO: only concerns server
     case genserver:request(St#client_st.server, {nick, self(), St#client_st.nick, NewNick}) of
         nick_taken -> 
             {reply, {error, nick_taken, "Nick is already taken"}, St};

@@ -176,7 +176,7 @@ channelHandler(St, {leave, User}) ->
 channelHandler(St, {message_send, Msg, Pid, Nick}) ->
     case lists:member(Pid, St#channel_st.users) of 
         true ->
-            massMail(St#channel_st.users, Msg, Nick, Pid, St#channel_st.name),
+            spawn(fun()->  massMail(St#channel_st.users, Msg, Nick, Pid, St#channel_st.name) end),
             {reply, ok, St};
         _ ->
             {reply, user_not_joined, St}
@@ -184,10 +184,14 @@ channelHandler(St, {message_send, Msg, Pid, Nick}) ->
 
 % helper function to channelHandler for message_send
 % recursively request genserver to send message to client's message_reseive handler
-%TODO: unnecessary to message in different threads since the request format still means it waits for an answer and is blocked under its duration??
-% TODO: jooo??
 massMail([Pid|Lst], Msg, Nick, SenderPid, Channel) ->
-    if 
+    Branch = length([Pid|Lst]),
+    %TODO: 100 is a very fucking random number
+    if
+        Branch > 100 ->
+            {Top, Bot} = lists:split(Branch/2, [Pid|Lst]),
+            spawn(fun()-> massMail(Top, Msg, Nick, SenderPid, Channel) end),
+            spawn(fun()-> massMail(Bot, Msg, Nick, SenderPid, Channel) end);
         SenderPid == Pid ->
             massMail(Lst, Msg, Nick, SenderPid, Channel);
         true ->
