@@ -1,6 +1,7 @@
 -module(server).
 -export([start/1,stop/1]).
 -import(genserver, [start/3]).
+-import(lists, [member/2, delete/2]).
 
 % Record defining the state of the server, holding channels and users
 -record(server_st, {
@@ -44,7 +45,7 @@ stop(ServerAtom) ->
 
 serverHandler(St, {join, Channel, Pid, Nick}) ->
     % Does the nick and Pid match? If so, we can use nicks for identification in-channel
-    RegNick = inList(St#server_st.users, Nick),
+    RegNick = lists:member(Nick, St#server_st.users),
     RegUser = RegNick andalso pidNick(St#server_st.users, Pid, Nick),
 
     %TODO: dumb fucking variables since you can't call functions from if statements, maybe replace with cases
@@ -61,22 +62,22 @@ serverHandler(St, {join, Channel, Pid, Nick}) ->
     end,
 
     %  Check if a channel with argument Channel name exists.
-    ChannelPid = list_to_atom(Channel),
-    ChannelExist = inList(St#server_st.channels, list_to_atom(Channel)),
-    if
-        ChannelExist ->
-            % channel already exists. Do nothing but assigning values to below variables
-            ChannelPid = list_to_atom(Channel),
-            Channels = St#server_st.channels;
+    ChannelAtom = list_to_atom(Channel),
+    %ChannelExist = inList(St#server_st.channels, list_to_atom(Channel)),
+    case lists:member(ChannelAtom, St#server_st.channels) of 
         true ->
+            % channel already exists. Do nothing but assigning values to below variables
+            % ChannelPid = list_to_atom(Channel),
+            Channels = St#server_st.channels;
+        _ ->
             % if not, create channel
-            genserver:start(ChannelPid, initial_channel_state(Channel), fun channelHandler/2),
-            Channels = [ChannelPid|St#server_st.channels]
+            genserver:start(ChannelAtom, initial_channel_state(Channel), fun channelHandler/2),
+            Channels = [ChannelAtom|St#server_st.channels]
     end,
 
     % request to channel process: addUser? 
     % Which adds the user if possible AND returns a boolean containing whether it was a success or not.
-    case genserver:request(ChannelPid, {addUser, {Pid, Nick}}) of
+    case genserver:request(ChannelAtom, {addUser, {Pid, Nick}}) of
         nick_already_joined ->
             {reply, user_already_joined, St};
         _ ->
@@ -88,27 +89,61 @@ serverHandler(St, {join, Channel, Pid, Nick}) ->
 
     end;
 
-serverHandler(St, {leave, Channel, Nick, Pid}) ->
-    not_implemented.
+serverHandler(St, {leave, ChannelAtom, User}) ->
+    %ChannelAtom = list_to_atom(Channel),
+     %Check if Channel exists
+    Server = not_yet_checked,
+    case lists:member(ChannelAtom, St#server_st.channels) of
+        true ->
+            Server = genserver:request(ChannelAtom, {leave, User});
+        _ ->
+            % Return error message if Channel does not exist
+            {reply, channel_does_not_exist, St}
+    end,
 
+    case Server of
+        user_not_joined ->
+            % Return error message if user is not member of this channel
+            {reply, user_not_joined, St};
+        _ ->
+            % return ok. State does not need to be updated
+            {reply, ok, St}
+    end;
+
+serverHandler(St, {channelExists, ChannelAtom}) ->
+    {reply, lists:member(ChannelAtom, St#server_st.channels), St}.
 
 % adds user to channel list of users
 % if user has already joined, return error msg nick_already_joined
 channelHandler(St, {addUser, User}) ->
-    case inList(St#channel_st.users, User) of 
+    case lists:member(User, St#channel_st.users) of 
         true ->
             {reply, nick_already_joined, St};
         _ ->
             Users = [User | St#channel_st.users],
             UpdSt = St#channel_st{
+                %TODO: definera kanalnamn???
+                name = St#channel_st.name,
                 users = Users
             },
             {reply, ok, UpdSt}
     end;
 
+channelHandler(St, {leave, User}) ->
+    case lists:member(User, St#channel_st.users) of
+        true ->
+            UpdSt = St#channel_st{
+                name = St#channel_st.name,
+                users = lists:delete(User, St#channel_st.users)
+            },
+            {reply, ok, UpdSt};
+        _ ->
+            {reply, user_not_joined, St}
+    end;
+
 % send message to all members of channel
 channelHandler(St, {message_send, Msg, {Pid, Nick}}) ->
-    case inList(St#channel_st.users, {Pid, Nick}) of 
+    case lists:member({Pid, Nick}, St#channel_st.users) of 
         true ->
             massMail(St#channel_st.users, Msg, Nick, St#channel_st.name),
             {reply, ok, St};
@@ -119,6 +154,7 @@ channelHandler(St, {message_send, Msg, {Pid, Nick}}) ->
 % helper function to channelHandler for message_send
 % recursively request genserver to send message to client's message_reseive handler
 %TODO: unnecessary to message in different threads since the request format still means it waits for an answer and is blocked under its duration??
+% TODO: jooo??
 massMail([{Target, TNick}|Lst], Msg, Nick, Channel) ->
     if 
         TNick == Nick ->
@@ -135,10 +171,3 @@ massMail(_,_,_,_) ->
 pidNick([{Pid, Nick}|_], Pid, Nick) -> true; % A match!
 pidNick([_|Lst], Pid, Nick) -> pidNick(Lst, Pid, Nick); % Recursive call
 pidNick(_,_,_) -> false. % This case means that the list is empty wo any Pid-Nick match, so false
-
-% Checks if object is in a list
-%TODO: should prob. be replaced 
-inList([Object|_], Object) -> true;
-inList([_|Lst], Object) -> inList(Lst, Object);
-inList(_,_) -> false.
-    
