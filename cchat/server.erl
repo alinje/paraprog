@@ -5,13 +5,13 @@
 
 % Record defining the state of the server, holding channels and users
 -record(server_st, {
-    channels,
+    channels, % only atoms
     users % Pids, then Nicks
 }).
 
 -record(channel_st, {
-    name,
-    users % Pids, then Nicks
+    name, % string name of the channel
+    users % only Pids
 }).
 
 % Function returning the initial state of the server, no channels nor servers
@@ -39,6 +39,8 @@ start(ServerAtom) ->
 % together with any other associated processes
 stop(ServerAtom) ->
     % Return ok
+    %TODO: kill all channels
+    genserver:request(ServerAtom, {stopChannels}),
     genserver:stop(ServerAtom).
 
 % Request from client to genserver, genserver uses this server which returns a new state and a response to the genserver which forwards to the client 
@@ -46,10 +48,8 @@ stop(ServerAtom) ->
 serverHandler(St, {join, Channel, Pid, Nick}) ->
     % Does the nick and Pid match? If so, we can use nicks for identification in-channel
     RegNick = lists:member(Nick, St#server_st.users),
-    RegUser = RegNick andalso pidNick(St#server_st.users, Pid, Nick),
+    RegUser = RegNick andalso lists:member(St#server_st.users, {Pid, Nick}),
 
-    %TODO: dumb fucking variables since you can't call functions from if statements, maybe replace with cases
-    %TODO: behövs det ens????
     if 
         RegUser ->
             Users = St#server_st.users;
@@ -77,7 +77,7 @@ serverHandler(St, {join, Channel, Pid, Nick}) ->
 
     % request to channel process: addUser? 
     % Which adds the user if possible AND returns a boolean containing whether it was a success or not.
-    case genserver:request(ChannelAtom, {addUser, {Pid, Nick}}) of
+    case genserver:request(ChannelAtom, {addUser, Pid}) of
         nick_already_joined ->
             {reply, user_already_joined, St};
         _ ->
@@ -90,29 +90,60 @@ serverHandler(St, {join, Channel, Pid, Nick}) ->
     end;
 
 serverHandler(St, {leave, ChannelAtom, User}) ->
-    %ChannelAtom = list_to_atom(Channel),
-     %Check if Channel exists
-    Server = not_yet_checked,
+    %Check if Channel exists
     case lists:member(ChannelAtom, St#server_st.channels) of
         true ->
-            Server = genserver:request(ChannelAtom, {leave, User});
+            case genserver:request(ChannelAtom, {leave, User}) of 
+                user_not_joined ->
+                    % Return error message if user is not member of this channel
+                    {reply, user_not_joined, St};
+                _ ->
+                    % return ok. State does not need to be updated
+                    {reply, ok, St}
+            end;
         _ ->
             % Return error message if Channel does not exist
             {reply, channel_does_not_exist, St}
-    end,
+    end;
 
-    case Server of
-        user_not_joined ->
-            % Return error message if user is not member of this channel
-            {reply, user_not_joined, St};
-        _ ->
-            % return ok. State does not need to be updated
-            {reply, ok, St}
+
+% Changes nick of user if not already taken
+serverHandler(St, {nick, Pid, OldNick, NewNick}) ->
+    NickExists =nickExists(St#server_st.users, NewNick),
+    if
+        OldNick == NewNick ->
+            {reply, its_your_name, St};
+        NickExists ->    
+            {reply, nick_taken, St};
+        true ->
+            UpdSt = St#server_st{
+                channels = St#server_st.channels,
+                users = [{Pid, NewNick} | lists:delete({Pid, OldNick}, St#server_st.users)]
+            },
+            {reply, ok, UpdSt}
     end;
 
 serverHandler(St, {channelExists, ChannelAtom}) ->
-    {reply, lists:member(ChannelAtom, St#server_st.channels), St}.
+    {reply, lists:member(ChannelAtom, St#server_st.channels), St};
 
+serverHandler(St, {quit, Pid}) ->
+    NmbrChannels = length(St#server_st.channels),
+    if  NmbrChannels =/= 0 ->
+            Channels = lists:foreach(fun(Channel) -> genserver:request(Channel, {leave, Pid}) end, St#server_st.channels);
+        true ->
+            Channels = []  
+    end,
+    Users = removePid(St#server_st.users, Pid),
+    UpdSt = St#server_st{
+    channels = Channels,
+        users = Users
+    },
+    {reply, ok, UpdSt};
+
+serverHandler(St, {stopChannels}) ->
+    {reply, lists:foreach(fun(Channel) -> genserver:stop(Channel) end, St#server_st.channels), St}.
+
+    
 % adds user to channel list of users
 % if user has already joined, return error msg nick_already_joined
 channelHandler(St, {addUser, User}) ->
@@ -142,10 +173,10 @@ channelHandler(St, {leave, User}) ->
     end;
 
 % send message to all members of channel
-channelHandler(St, {message_send, Msg, {Pid, Nick}}) ->
-    case lists:member({Pid, Nick}, St#channel_st.users) of 
+channelHandler(St, {message_send, Msg, Pid, Nick}) ->
+    case lists:member(Pid, St#channel_st.users) of 
         true ->
-            massMail(St#channel_st.users, Msg, Nick, St#channel_st.name),
+            massMail(St#channel_st.users, Msg, Nick, Pid, St#channel_st.name),
             {reply, ok, St};
         _ ->
             {reply, user_not_joined, St}
@@ -155,19 +186,22 @@ channelHandler(St, {message_send, Msg, {Pid, Nick}}) ->
 % recursively request genserver to send message to client's message_reseive handler
 %TODO: unnecessary to message in different threads since the request format still means it waits for an answer and is blocked under its duration??
 % TODO: jooo??
-massMail([{Target, TNick}|Lst], Msg, Nick, Channel) ->
+massMail([Pid|Lst], Msg, Nick, SenderPid, Channel) ->
     if 
-        TNick == Nick ->
-            massMail(Lst, Msg, Nick, Channel);
+        SenderPid == Pid ->
+            massMail(Lst, Msg, Nick, SenderPid, Channel);
         true ->
-            genserver:request(Target, {message_receive, Channel, Nick, Msg}),
-            massMail(Lst, Msg, Nick, Channel)
+            genserver:request(Pid, {message_receive, Channel, Nick, Msg}),
+            massMail(Lst, Msg, Nick, SenderPid, Channel)
     end;
-massMail(_,_,_,_) -> 
+massMail(_,_,_,_,_) -> 
     ok.
 
+nickExists([{_, Nick}| _], Nick) -> true; % Nick exists among users in server
+nickExists([_|Lst], Nick) -> nickExists(Lst, Nick); % Recursive call
+nickExists(_,_) -> false. %Nick is unique in server
 
-% checks if Pid and Nick match
-pidNick([{Pid, Nick}|_], Pid, Nick) -> true; % A match!
-pidNick([_|Lst], Pid, Nick) -> pidNick(Lst, Pid, Nick); % Recursive call
-pidNick(_,_,_) -> false. % This case means that the list is empty wo any Pid-Nick match, so false
+removePid([{Pid, _} | Lst], Pid) -> Lst; % Remove first item if it matches the pid
+removePid([First|Last], Pid) -> [First|removePid(Last,Pid)]; % Match not found, continue with recursive call
+removePid(_,_) -> []. % Match not found
+
