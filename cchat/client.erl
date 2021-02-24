@@ -6,8 +6,8 @@
 -record(client_st, {
     gui, % atom of the GUI process
     nick, % nick/username of the client
-    server % atom of the chat server
-    
+    server, % atom of the chat server
+    channels
 }).
 
 % Return an initial state record. This is called from GUI.
@@ -16,7 +16,8 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
     #client_st{
         gui = GUIAtom,
         nick = Nick,
-        server = ServerAtom
+        server = ServerAtom,
+        channels = []
     }.
 
 
@@ -32,27 +33,24 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 handle(St, {join, Channel}) ->
     % Send request to genserver from state St
     % The data that will reach the handler in server is the data inside the curly brackets
-    %ChannelAtom = list_to_atom(Channel),
-    case is_process_alive(whereis(St#client_st.server)) of
-        false ->
-            {reply, {error, server_not_reached, "Server can not be reached"}, St};
-        _ ->
-            case genserver:request(St#client_st.server, {join, Channel, self(), St#client_st.nick}) of
-                % Return, in message form, an Ok if performed, otherwise error with error message
-                user_already_joined ->
-                    {reply, {error, user_already_joined, "User has already joined this channel!"}, St};                    
-                ok ->
-                    % TODO: we return the arguement state unchanged since neither gui, nick nor server has changed ?
-        %           UpdSt = St#client_st{
-        %               channels = [ ChannelAtom | St#client_st.channels ]
-        %            },
-        %          {reply, ok, UpdSt} 
-                    {reply, ok, St}%;
-                %_ ->
-                  %  {reply, {error, server_not_reached, "Server can not be reached"}, St}
+    ChannelAtom = list_to_atom(Channel),
 
-            end
+    %TODO: through server, with catch
+    try genserver:request(St#client_st.server, {join, Channel, self(), St#client_st.nick}) of
+        % Return, in message form, an ok if performed, otherwise error with error message
+        user_already_joined ->
+            {reply, {error, user_already_joined, "User has already joined this channel!"}, St};                    
+        ok ->
+            UpdSt = St#client_st{
+                channels = [ ChannelAtom | St#client_st.channels ]
+            },
+            {reply, ok, UpdSt}
+
+    catch 
+        error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St};
+        timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St}
     end;
+
 % Leave channel
 handle(St, {leave, Channel}) ->
 
