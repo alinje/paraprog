@@ -52,41 +52,20 @@ handle(St, {join, Channel}) ->
     end;
 
 % Leave channel
+%TODO: should not be dependent on server
 handle(St, {leave, Channel}) ->
 
-   ChannelAtom = list_to_atom(Channel),
-   case is_process_alive(whereis(St#client_st.server)) of
-        true ->
-            ExistingChannel = genserver:request(St#client_st.server, {channelExists, ChannelAtom});
-        _ ->
-            ExistingChannel = false,
-            {reply, {error, server_not_reached, "Server can not be reached"}, St}
-    end,
-%case lists:member(ChannelAtom, St#client_st.channels) of
-    case ExistingChannel of
-    %case genserver:request(St#client_st.server, {channelExists, ChannelAtom}) of
-        true ->
-            case genserver:request(ChannelAtom, {leave, self()}) of
-                ok ->
-                    {reply, ok, St};
-                _ -> 
-                    {reply,{error, user_not_joined, "User has not joined this channel"}, St}
-                end;
-        _ -> 
-            {reply,{error, user_not_joined, "Channel does not exist"}, St}
-        end;
-%ChannelAtom = list_to_atom(Channel),
-%case is_process_alive(whereis(ChannelAtom)) of
- %   true ->
-  %      case genserver:request(ChannelAtom, {leave, ChannelAtom, {self(), St#client_st.nick}}) of 
-   %         user_not_joined ->
-    %            {reply, {error, user_not_joined, "User has not joined this channel"}, St};
-     %       _ ->
-      %          {reply, ok, St}
-       % end;
-    %_ ->
-     %       {reply, {error, server_not_reached, "Server can not be reached"}, St}
-%end;
+    ChannelAtom = list_to_atom(Channel),
+    try genserver:request(ChannelAtom, {leave, self()}) of
+        user_not_joined ->
+            {reply,{error, user_not_joined, "User has not joined this channel"}, St};
+        ok ->
+            {reply, ok, St}
+    catch
+        error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St};
+        timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St}
+    end;
+
         
 
 
