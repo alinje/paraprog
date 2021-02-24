@@ -30,16 +30,15 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 handle(St, {join, Channel}) ->
     
 
-    % Send request to genserver from state St, store answer in variable 
+    % Send request to genserver from state St
     % The data that will reach the handler in server is the data inside the curly brackets
-    
-    % "Analyze" answer for error catching
+
     case genserver:request(St#client_st.server, {join, Channel, self(), St#client_st.nick}) of
         % Return, in message form, an Ok if performed, otherwise error with error message
         user_already_joined ->
-            {reply, {error, not_implemented, "join not implemented"}, St};        
+            {reply, {error, user_already_joined, "User has already joined this channel!"}, St};        
         _ ->
-            %TODO: update state?
+            % TODO: we return the arguement state unchanged since neither gui, nick nor server has changed ?
             {reply, ok, St} 
     end;
 
@@ -51,13 +50,11 @@ handle(St, {leave, Channel}) ->
 
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
-    % Attempt sending message to channel, store answer
-    % Catch errors
-    % Answer
     ChannelPid = list_to_atom(Channel),
+    % what is the result of the send request? if it's ok, send ok to gui. otherwise send error msg user_not_joined
     case genserver:request(ChannelPid, {message_send, Msg, {self(), St#client_st.nick}}) of
         user_not_joined ->
-            {reply, user_not_joined, St};
+            {reply, {error, user_not_joined, "User has not joined this channel"}, St};
         _ ->
             {reply, ok, St}
     end;
@@ -65,12 +62,14 @@ handle(St, {message_send, Channel, Msg}) ->
 % This case is only relevant for the distinction assignment!
 % Change nick (no check, local only)
 handle(St, {nick, NewNick}) ->
+    %TODO: check for permission with server !!
     {reply, ok, St#client_st{nick = NewNick}} ;
 
 % ---------------------------------------------------------------------------
 % The cases below do not need to be changed...
 % But you should understand how they work!
 
+%TODO: written as a task but seems to be done??
 % Get current nick
 handle(St, whoami) ->
     {reply, St#client_st.nick, St} ;
