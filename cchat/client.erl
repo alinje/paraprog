@@ -16,8 +16,7 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
     #client_st{
         gui = GUIAtom,
         nick = Nick,
-        server = ServerAtom,
-        channels = []
+        server = ServerAtom
     }.
 
 
@@ -33,19 +32,13 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 handle(St, {join, Channel}) ->
     % Send request to genserver from state St
     % The data that will reach the handler in server is the data inside the curly brackets
-    ChannelAtom = list_to_atom(Channel),
 
-    %TODO: through server, with catch
     try genserver:request(St#client_st.server, {join, Channel, self(), St#client_st.nick}) of
         % Return, in message form, an ok if performed, otherwise error with error message
         user_already_joined ->
             {reply, {error, user_already_joined, "User has already joined this channel!"}, St};                    
         ok ->
-            UpdSt = St#client_st{
-                channels = [ ChannelAtom | St#client_st.channels ]
-            },
-            {reply, ok, UpdSt}
-
+            {reply, ok, St}
     catch 
         error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St};
         timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St};
@@ -53,9 +46,7 @@ handle(St, {join, Channel}) ->
     end;
 
 % Leave channel
-%TODO: should not be dependent on server
 handle(St, {leave, Channel}) ->
-
     ChannelAtom = list_to_atom(Channel),
     try genserver:request(ChannelAtom, {leave, self()}) of
         user_not_joined ->
@@ -73,7 +64,6 @@ handle(St, {leave, Channel}) ->
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
     ChannelAtom = list_to_atom(Channel),
-    %TODO: dont go through server
     try genserver:request(ChannelAtom, {message_send, Msg, self(), St#client_st.nick}) of
         user_not_joined ->
             {reply, {error, user_not_joined, "User has not joined this channel"}, St};
@@ -88,7 +78,6 @@ handle(St, {message_send, Channel, Msg}) ->
 % This case is only relevant for the distinction assignment!
 % Change nick (no check, local only)
 handle(St, {nick, NewNick}) ->
-    %TODO: only concerns server
     case genserver:request(St#client_st.server, {nick, self(), St#client_st.nick, NewNick}) of
         nick_taken -> 
             {reply, {error, nick_taken, "Nick is already taken"}, St};
@@ -103,7 +92,6 @@ handle(St, {nick, NewNick}) ->
 % The cases below do not need to be changed...
 % But you should understand how they work!
 
-%TODO: written as a task but seems to be done??
 % Get current nick
 handle(St, whoami) ->
     {reply, St#client_st.nick, St} ;
