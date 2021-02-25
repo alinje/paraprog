@@ -46,9 +46,9 @@ stop(ServerAtom) ->
 % Request from client to genserver, genserver uses this server which returns a new state and a response to the genserver which forwards to the client 
 
 serverHandler(St, {join, Channel, Pid, Nick}) ->
-    % Does the nick and Pid match? If so, we can use nicks for identification in-channel
+    % Does the nick and Pid match a registrered user? Or are they a non-match?
     RegNick = lists:member(Nick, St#server_st.users),
-    RegUser = RegNick andalso lists:member(St#server_st.users, {Pid, Nick}),
+    RegUser = lists:member({Pid, Nick}, St#server_st.users),
 
     if 
         RegUser ->
