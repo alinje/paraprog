@@ -129,13 +129,12 @@ serverHandler(St, {channelExists, ChannelAtom}) ->
 serverHandler(St, {quit, Pid}) ->
     NmbrChannels = length(St#server_st.channels),
     if  NmbrChannels =/= 0 ->
-            Channels = lists:foreach(fun(Channel) -> genserver:request(Channel, {leave, Pid}) end, St#server_st.channels);
+            lists:foreach(fun(Channel) -> genserver:request(Channel, {leave, Pid}) end, St#server_st.channels);
         true ->
-            Channels = []  
+            ok 
     end,
     Users = removePid(St#server_st.users, Pid),
     UpdSt = St#server_st{
-    channels = Channels,
         users = Users
     },
     {reply, ok, UpdSt};
