@@ -33,15 +33,17 @@ handle(St, {join, Channel}) ->
     % Send request to genserver from state St
     % The data that will reach the handler in server is the data inside the curly brackets
 
+    % Try to connect to the server and join a channel
     try genserver:request(St#client_st.server, {join, Channel, self(), St#client_st.nick}) of
-        % Return, in message form, an ok if performed, otherwise error with error message
+        % Check value from the server and act according to the result message
         user_already_joined ->
             {reply, {error, user_already_joined, "User has already joined this channel!"}, St};                    
         ok ->
             {reply, ok, St}
+
+    % Catch errors when connecting to the server
     catch 
         error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St};
-        timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St};
         _:_ -> {reply, {error, server_not_reached, "Server timedout"}, St}
     end;
 
@@ -52,14 +54,10 @@ handle(St, {leave, Channel}) ->
         user_not_joined ->
             {reply,{error, user_not_joined, "User has not joined this channel"}, St};
         ok ->
-            {reply, ok, St}
+            {reply, ok, St}    
     catch
-        error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St};
-        timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St}
+        error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St}
     end;
-
-        
-
 
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
@@ -70,11 +68,9 @@ handle(St, {message_send, Channel, Msg}) ->
         ok ->
             {reply, ok, St}
     catch
-        error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St};
-        timeout_error -> {reply, {error, server_not_reached, "Server timedout"}, St}
+        error:badarg -> {reply, {error, server_not_reached, "Server not reached"}, St}
     end;
 
-   
 % This case is only relevant for the distinction assignment!
 % Change nick (no check, local only)
 handle(St, {nick, NewNick}) ->
@@ -87,7 +83,6 @@ handle(St, {nick, NewNick}) ->
             {reply, ok, St#client_st{nick = NewNick}}
     end;
     
-
 % ---------------------------------------------------------------------------
 % The cases below do not need to be changed...
 % But you should understand how they work!
@@ -112,7 +107,6 @@ handle(St, quit) ->
         _:_ -> {reply, quit_was_unsuccessful, St}
     end;
     
-
 % Catch-all for any unhandled requests
 handle(St, Data) ->
     {reply, {error, not_implemented, "Client does not handle this command"}, St} .
