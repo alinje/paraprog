@@ -117,9 +117,13 @@ handle(St = #client_st{gui = GUI}, {message_receive, Channel, Nick, Msg}) ->
 handle(St, quit) ->
     % Any cleanup should happen here, but this is optional
     % Call for the server to remove client from channels
-    genserver:request(St#client_st.server, {quit, self()}),
-    %genserver:stop(self());
-    {reply, ok, St} ;
+    try genserver:request(St#client_st.server, {quit, self()}) of
+        ok ->
+            {reply, ok, St} 
+    catch
+        _:_ -> {reply, quit_was_unsuccessful, St}
+    end;
+    
 
 % Catch-all for any unhandled requests
 handle(St, Data) ->
