@@ -81,3 +81,7 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# Java Compiler Files
+.xml
+.iml
