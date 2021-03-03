@@ -83,5 +83,5 @@ $RECYCLE.BIN/
 *.lnk
 
 # Java Compiler Files
-.xml
-.iml
+*.xml
+*.iml
