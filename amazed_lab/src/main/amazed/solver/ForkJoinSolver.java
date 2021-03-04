@@ -12,6 +12,7 @@ import java.util.SortedSet;
 import java.util.Stack;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.text.StyledEditorKit.ForegroundAction;
 
@@ -28,7 +29,9 @@ import javax.swing.text.StyledEditorKit.ForegroundAction;
 public class ForkJoinSolver
     extends SequentialSolver
 {
-    int player;
+    private int player;
+    private AtomicBoolean playerSet;
+    private AtomicBoolean found;
 
     /**
      * Creates a solver that searches in <code>maze</code> from the
@@ -40,19 +43,22 @@ public class ForkJoinSolver
     {
         super(maze);
         visited = new ConcurrentSkipListSet<>();
-        player = maze.newPlayer(maze.start());
+        found = new AtomicBoolean(); // defaults to false
+        playerSet = new AtomicBoolean();
+
     }
 
-    public ForkJoinSolver(Maze maze, Object start, Set<Integer> visited, Map<Integer, Integer> predecessor) {
+    public ForkJoinSolver(Maze maze, Object start, Set<Integer> visited, Map<Integer, Integer> predecessor, AtomicBoolean found) {
         super(maze);
 
         this.start = (int)start; //TODO nah
         this.visited = visited;
+        this.found = found;
 
 
-        player = maze.newPlayer((int)start);
         this.predecessor = predecessor;
 
+        playerSet = new AtomicBoolean();
 
     }
 
@@ -96,6 +102,8 @@ public class ForkJoinSolver
         return parallelSearch(start);
     }
 
+
+    //TODO how ???? do you implement forkAfter without checking the number ????
     private List<Integer> parallelSearch(int startID)
     {
         // set visited
@@ -104,20 +112,26 @@ public class ForkJoinSolver
         // a depth first search with forking at each maze fork
 
         // ConcurrentSkipListSet´s add adds current atomically if not already present, and returns boolean telling if it succeeded
-        if (visited.add(startID)){
+        if (visited.add(startID) && !found.get()){
 
+            if (!playerSet.get()) {
+                player = maze.newPlayer((int)start);
+                playerSet.set(true);
+            } //TODO this should be changed to a regular boolean
             int current = startID;
-            if (maze.hasGoal(current)){
-                
-                maze.move(player, current);
+            maze.move(player, current);
 
-                //TODO do we need to tell the other threads that we are done?
-                
+            if (maze.hasGoal(current)){
+                /*
+                for (Integer integer : visited) {
+                    System.out.println(integer);
+                }
+                */
+                System.out.println(this.getPool().getActiveThreadCount());
+
+                found.set(true);
                 return pathFromTo(maze.start(), current);
             }
-
-
-            maze.move(player, current);
 
             TreeSet<Integer> neighbours = new TreeSet<>(maze.neighbors(current));
             Iterator<Integer> it = neighbours.iterator();
@@ -131,11 +145,33 @@ public class ForkJoinSolver
                     predecessor.put(nxt, current);
                 }
             }
+/*
+            TODO the list thing probably gets ruined in the recursive call. should be fixable
+            if(neighbours.isEmpty()) return null;
+
+            List<ForkJoinSolver> children = new ArrayList<>();
+            for (int i = 0; i < neighbours.size()-1; i++) {
+                ForkJoinSolver breakOut = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found); // lowest entries to forks because less likely to be right?
+                children.add(breakOut);
+                breakOut.fork();
+            }
+
+            List<Integer> remainsResult = parallelSearch(neighbours.pollFirst());            
+            if (remainsResult != null) return remainsResult;
+
+
+            for (ForkJoinSolver child : children) {
+
+                List<Integer> results = child.join();
+                if(results != null) return results;
+            }*/
+
+
 
             if (neighbours.size() == 1){
                 return parallelSearch(neighbours.first());
             } else if (neighbours.size() == 2){ //TODO possibly add condition around forkAfter()
-                ForkJoinSolver breakOut = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor)); // lowest entries to forks because less likely to be right?
+                ForkJoinSolver breakOut = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found); // lowest entries to forks because less likely to be right?
                 breakOut.fork();
                 
                 List<Integer> remainsResult = parallelSearch(neighbours.pollLast());
@@ -143,11 +179,11 @@ public class ForkJoinSolver
                 if (remainsResult != null) return remainsResult;
 
                 List<Integer> breakOutResults = breakOut.join();
-                if ( breakOutResults != null) return breakOutResults; //TODO this could be done with the questionmarkthingy
+                if ( breakOutResults != null) return breakOutResults;
 
             } else if (neighbours.size() == 3){ // neighbours sixe is three
-                ForkJoinSolver breakOut1 = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor));
-                ForkJoinSolver breakOut2 = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor));
+                ForkJoinSolver breakOut1 = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found);
+                ForkJoinSolver breakOut2 = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found);
 
                 breakOut1.fork();
                 breakOut2.fork();
@@ -162,7 +198,6 @@ public class ForkJoinSolver
                 if ( breakOutResults != null) return breakOutResults;
             } 
         }
-
         return null;
     }
 }
