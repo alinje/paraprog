@@ -38,5 +38,8 @@ parallel_medium_step3: compile
 parallel_medium_step9: compile
 	$(JAVA) -cp $(MAIN_CP) $(MAIN_CLASS) $(MAPS_DIR)/medium.map parallel-9
 
+parallel_large_step3: compile
+	$(JAVA) -cp $(MAIN_CP) $(MAIN_CLASS) $(MAPS_DIR)/large.map parallel-3
+
 .PHONY: compile
 
