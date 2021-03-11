@@ -103,7 +103,7 @@ public class ForkJoinSolver
     }
 
 
-    //TODO how ???? do you implement forkAfter without checking the number ????
+    //TODO solution should work with wacko forkAfter-values, be optimized with good values
     private List<Integer> parallelSearch(int startID)
     {
         // set visited
@@ -122,11 +122,7 @@ public class ForkJoinSolver
             maze.move(player, current);
 
             if (maze.hasGoal(current)){
-                /*
-                for (Integer integer : visited) {
-                    System.out.println(integer);
-                }
-                */
+
                 System.out.println(this.getPool().getActiveThreadCount());
 
                 found.set(true);
@@ -145,16 +141,17 @@ public class ForkJoinSolver
                     predecessor.put(nxt, current);
                 }
             }
-/*
-            TODO the list thing probably gets ruined in the recursive call. should be fixable
+
             if(neighbours.isEmpty()) return null;
 
             List<ForkJoinSolver> children = new ArrayList<>();
-            for (int i = 0; i < neighbours.size()-1; i++) {
+            while (neighbours.size() > 1){
+
                 ForkJoinSolver breakOut = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found); // lowest entries to forks because less likely to be right?
                 children.add(breakOut);
                 breakOut.fork();
             }
+
 
             List<Integer> remainsResult = parallelSearch(neighbours.pollFirst());            
             if (remainsResult != null) return remainsResult;
@@ -164,39 +161,7 @@ public class ForkJoinSolver
 
                 List<Integer> results = child.join();
                 if(results != null) return results;
-            }*/
-
-
-
-            if (neighbours.size() == 1){
-                return parallelSearch(neighbours.first());
-            } else if (neighbours.size() == 2){ //TODO possibly add condition around forkAfter()
-                ForkJoinSolver breakOut = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found); // lowest entries to forks because less likely to be right?
-                breakOut.fork();
-                
-                List<Integer> remainsResult = parallelSearch(neighbours.pollLast());
-                
-                if (remainsResult != null) return remainsResult;
-
-                List<Integer> breakOutResults = breakOut.join();
-                if ( breakOutResults != null) return breakOutResults;
-
-            } else if (neighbours.size() == 3){ // neighbours sixe is three
-                ForkJoinSolver breakOut1 = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found);
-                ForkJoinSolver breakOut2 = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found);
-
-                breakOut1.fork();
-                breakOut2.fork();
-
-                List<Integer> remains = parallelSearch(neighbours.pollLast());
-                
-                if (remains != null) return remains;
-
-                List<Integer> breakOutResults = breakOut2.join();
-                if ( breakOutResults != null) return breakOutResults;
-                breakOutResults = breakOut1.join();
-                if ( breakOutResults != null) return breakOutResults;
-            } 
+            }
         }
         return null;
     }
