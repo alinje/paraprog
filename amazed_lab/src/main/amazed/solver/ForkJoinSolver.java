@@ -108,7 +108,7 @@ public class ForkJoinSolver
         // a depth first search with forking at each maze fork
 
         // ConcurrentSkipListSet´s add adds current atomically if not already present, and returns boolean telling if it succeeded
-        if (!visited.add(current) && found.get()){
+        if (!visited.add(current) || found.get()){
             return null;
         }
 
@@ -149,7 +149,7 @@ public class ForkJoinSolver
         List<ForkJoinSolver> children = new ArrayList<>();
 
         // While there are unvisited neighbours, fork new processes that explore each available path
-        while (neighbours.size() > 0){
+        while (neighbours.size() > 1){
             ForkJoinSolver breakOut = new ForkJoinSolver(maze, neighbours.pollFirst(), visited, new HashMap<>(predecessor), found); // lowest entries to forks because less likely to be right?
             children.add(breakOut);
             breakOut.fork();
